@@ -3,11 +3,8 @@ import ftplib
 import pydicom
 from datetime import datetime
 import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
-import re
-from tqdm import tqdm
-import signal
+from tkinter import messagebox, ttk
+import threading
 
 # Configuración
 FTP_PINNACLE_TOMO = '10.130.0.249'
@@ -30,9 +27,11 @@ LOG_PASADOS = rf'\\10.130.1.253\FisicaQuilmes\00_Tomografo\98_Logs\_aRegistroGen
 ARCHIVO_CONTADOR = rf'\\10.130.1.253\FisicaQuilmes\00_Tomografo\98_Logs\_aRegistroGeneral\contador_NOBORRAR.txt'
 
 TIMEOUT = 60  # Tiempo límite de 1 minutos por archivo
-# Función para manejar el timeout
-def handler(signum, frame):    
-    raise TimeoutError
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler():
+    raise TimeoutException
 
 # Función para eliminar archivos en el servidor FTP
 def eliminar_archivos_ftp(ftp, dir_path):
@@ -46,7 +45,7 @@ def eliminar_archivos_locales():
     img_files = [f for f in os.listdir(LOCAL_DIR) if f.endswith('.img')]
     for img in img_files:
         os.remove(os.path.join(LOCAL_DIR, img))
-        
+
 def ftp_transfer():
     # Crear la ventana principal de tkinter
     """
@@ -88,32 +87,13 @@ def ftp_transfer():
         root.after(100, update_progress_tomo)
         root.mainloop()
 
+# Función para cargar archivos con barra de progreso
 def ftp_upload(server_ip, username, password, remote_dir):
-    # Crear la ventana principal de tkinter
-    """
-    Crea una interfaz gráfica que muestra una barra de progreso para subir archivos
-    .img desde LOCAL_DIR al servidor FTP en el directorio remoto especificado.
-
-    La barra de progreso se actualizará con el progreso de la subida de archivos.
-    Una vez que se termina de subir todos los archivos, se cierra la ventana de la
-    interfaz.
-
-    Parameters
-    ----------
-    server_ip : str
-        La dirección IP del servidor FTP al que se quiere subir los archivos.
-    username : str
-        El nombre de usuario para loguearse en el servidor FTP.
-    password : str
-        La contraseña para loguearse en el servidor FTP.
-    remote_dir : str
-        El directorio remoto en el que se van a subir los archivos.
-    """
     root = tk.Tk()
-    root.title("Enviando archivos")
+    root.title("Progreso de Envío")
 
     # Etiqueta de progreso
-    progress_label = tk.Label(root, text="Enviando archivos a Física...")
+    progress_label = tk.Label(root, text="Enviando archivos...")
     progress_label.pack(pady=10)
 
     # Barra de progreso
@@ -126,34 +106,71 @@ def ftp_upload(server_ip, username, password, remote_dir):
     # Configurar la barra de progreso
     progress['maximum'] = len(img_files)
 
-    # Función para actualizar la barra de progreso
-    def update_progress():
-        """
-        Actualiza la barra de progreso al subir archivos al servidor FTP.
+    retry_count = {}  # Diccionario para rastrear el número de intentos por archivo
 
-        Se conecta al servidor FTP, se loguea, se cambia al directorio remoto
-        especificado y luego se suben los archivos .img encontrados en LOCAL_DIR.
-        La barra de progreso se actualiza con el progreso de la subida de archivos.
-        Una vez que se termina de subir todos los archivos, se cierra la ventana de la
-        interfaz.
-        """
+    def intentar_enviar_archivo(ftp, filename):
+        """Intenta enviar un archivo, con manejo de timeout."""
+        success = False
+        timer = threading.Timer(TIMEOUT, timeout_handler)
+        try:
+            # Iniciar el temporizador de timeout
+            timer.start()
+
+            local_file = os.path.join(LOCAL_DIR, filename)
+            with open(local_file, 'rb') as f:
+                ftp.storbinary(f'STOR {filename}', f)
+
+            success = True
+        except TimeoutException:
+            # Timeout alcanzado, detener operación
+            success = False
+        finally:
+            # Detener el temporizador si todo salió bien o hubo un fallo
+            timer.cancel()
+
+        return success
+
+    try:
         with ftplib.FTP() as ftp:
             ftp.connect(server_ip)
             ftp.login(username, password)
             ftp.cwd(remote_dir)
 
             for i, filename in enumerate(img_files):
-                local_file = os.path.join(LOCAL_DIR, filename)
-                with open(local_file, 'rb') as f:
-                    ftp.storbinary(f'STOR {filename}', f)
+                if filename not in retry_count:
+                    retry_count[filename] = 0  # Inicializar contador de reintentos
+
+                success = intentar_enviar_archivo(ftp, filename)
+
+                if not success:
+                    retry_count[filename] += 1
+
+                    if retry_count[filename] < 2:
+                        # Reintentar envío del archivo una vez más
+                        messagebox.showwarning("Reintento", f"Tiempo de espera agotado para {filename}. Reintentando...")
+                        success = intentar_enviar_archivo(ftp, filename)
+
+                if not success:
+                    # Si falla nuevamente, cancelar toda la operación
+                    messagebox.showerror("Error", f"Error al enviar {filename}. Cancelando operación...")
+                    eliminar_archivos_locales()
+                    eliminar_archivos_ftp(ftp, DIR_TOMOS_MARCADAS)
+                    eliminar_archivos_ftp(ftp, remote_dir)  # Eliminar archivos enviados a DEST_SERVER
+                    return
+
+                # Actualizar la barra de progreso
                 progress['value'] = i + 1
+                progress_label.config(text=f"Enviando archivo {i + 1} de {len(img_files)}")  # Mostrar progreso
                 root.update_idletasks()
 
         root.destroy()
 
-    # Iniciar la carga de archivos en un hilo separado para no bloquear la interfaz
-    root.after(100, update_progress)
-    root.mainloop()
+    except Exception as e:
+        messagebox.showerror("Error FTP", f"Error al conectar con el servidor FTP: {e}")
+        eliminar_archivos_locales()
+
+    messagebox.showinfo("Éxito", "Todos los archivos fueron enviados correctamente.")
+
 
 
 def dcmdump(filepath, tag):
@@ -321,11 +338,8 @@ def main():
 
     for img in img_files:
         os.remove(os.path.join(LOCAL_DIR, img))
-        
-    # Crear una ventana emergente avisando que ya ta
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showinfo("Listo!", "Paciente enviado correctamente!")
+
+
 
 if __name__ == '__main__':
     main()
