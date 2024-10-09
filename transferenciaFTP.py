@@ -30,6 +30,11 @@ ARCHIVO_CONTADOR = rf'\\10.130.1.253\FisicaQuilmes\00_Tomografo\98_Logs\_aRegist
 
 def ftp_transfer():
     # Crear la ventana principal de tkinter
+    """
+    Descarga los archivos de la carpeta DIR_TOMOS_MARCADAS y los almacena en la carpeta LOCAL_DIR.
+    Muestra una ventana con una barra de progreso que indica el avance de la descarga.
+    """
+    
     root = tk.Tk()
     root.title("Descargando tomo")
 
@@ -68,6 +73,25 @@ def ftp_transfer():
 
 def ftp_upload(server_ip, username, password, remote_dir):
     # Crear la ventana principal de tkinter
+    """
+    Crea una interfaz gráfica que muestra una barra de progreso para subir archivos
+    .img desde LOCAL_DIR al servidor FTP en el directorio remoto especificado.
+
+    La barra de progreso se actualizará con el progreso de la subida de archivos.
+    Una vez que se termina de subir todos los archivos, se cierra la ventana de la
+    interfaz.
+
+    Parameters
+    ----------
+    server_ip : str
+        La dirección IP del servidor FTP al que se quiere subir los archivos.
+    username : str
+        El nombre de usuario para loguearse en el servidor FTP.
+    password : str
+        La contraseña para loguearse en el servidor FTP.
+    remote_dir : str
+        El directorio remoto en el que se van a subir los archivos.
+    """
     root = tk.Tk()
     root.title("Enviando archivos")
 
@@ -87,6 +111,15 @@ def ftp_upload(server_ip, username, password, remote_dir):
 
     # Función para actualizar la barra de progreso
     def update_progress():
+        """
+        Actualiza la barra de progreso al subir archivos al servidor FTP.
+
+        Se conecta al servidor FTP, se loguea, se cambia al directorio remoto
+        especificado y luego se suben los archivos .img encontrados en LOCAL_DIR.
+        La barra de progreso se actualiza con el progreso de la subida de archivos.
+        Una vez que se termina de subir todos los archivos, se cierra la ventana de la
+        interfaz.
+        """
         with ftplib.FTP() as ftp:
             ftp.connect(server_ip)
             ftp.login(username, password)
@@ -107,6 +140,26 @@ def ftp_upload(server_ip, username, password, remote_dir):
 
 
 def dcmdump(filepath, tag):
+    """
+    Reads a DICOM file at `filepath` and returns the value of the given `tag`.
+
+    If the tag is not found in the file, returns an empty string.
+
+    If an exception is raised while reading the file, prints the exception message
+    and returns an empty string.
+
+    Parameters
+    ----------
+    filepath : str
+        path to the DICOM file to read
+    tag : str
+        the tag to read from the file
+
+    Returns
+    -------
+    str
+        the value of the given tag, or an empty string if not found
+    """
     try:
         ds = pydicom.dcmread(filepath,force=True)
         return ds.data_element(tag).value if tag in ds else ''
