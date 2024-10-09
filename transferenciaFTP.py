@@ -7,6 +7,7 @@ from tkinter import ttk
 from tkinter import messagebox
 import re
 from tqdm import tqdm
+import signal
 
 # Configuración
 FTP_PINNACLE_TOMO = '10.130.0.249'
@@ -28,6 +29,24 @@ LOCAL_DIR = './'
 LOG_PASADOS = rf'\\10.130.1.253\FisicaQuilmes\00_Tomografo\98_Logs\_aRegistroGeneral\log_pacientes_enviados.txt'
 ARCHIVO_CONTADOR = rf'\\10.130.1.253\FisicaQuilmes\00_Tomografo\98_Logs\_aRegistroGeneral\contador_NOBORRAR.txt'
 
+TIMEOUT = 60  # Tiempo límite de 1 minutos por archivo
+# Función para manejar el timeout
+def handler(signum, frame):    
+    raise TimeoutError
+
+# Función para eliminar archivos en el servidor FTP
+def eliminar_archivos_ftp(ftp, dir_path):
+    ftp.cwd(dir_path)
+    filenames = ftp.nlst()
+    for filename in filenames:
+        ftp.delete(filename)
+
+# Función para eliminar archivos locales
+def eliminar_archivos_locales():
+    img_files = [f for f in os.listdir(LOCAL_DIR) if f.endswith('.img')]
+    for img in img_files:
+        os.remove(os.path.join(LOCAL_DIR, img))
+        
 def ftp_transfer():
     # Crear la ventana principal de tkinter
     """
@@ -68,8 +87,6 @@ def ftp_transfer():
         # Iniciar la descarga de archivos en un hilo separado para no bloquear la interfaz
         root.after(100, update_progress_tomo)
         root.mainloop()
-
-
 
 def ftp_upload(server_ip, username, password, remote_dir):
     # Crear la ventana principal de tkinter
