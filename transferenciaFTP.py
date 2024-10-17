@@ -132,9 +132,14 @@ def ftp_upload(server_ip, username, password, remote_dir):
 
     try:
         with ftplib.FTP() as ftp:
-            ftp.connect(server_ip)
-            ftp.login(username, password)
-            ftp.cwd(remote_dir)
+            try:
+                ftp.connect(server_ip)
+                ftp.login(username, password)
+                ftp.cwd(remote_dir)
+            except ftplib.all_errors as e:
+                messagebox.showerror("Error de Conexión", f"No se pudo conectar a PC de Fisica: {e}")
+                root.destroy()  # Cerrar la ventana de progreso
+                return
 
             for i, filename in enumerate(img_files):
                 if filename not in retry_count:
