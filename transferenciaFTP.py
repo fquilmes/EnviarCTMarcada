@@ -66,9 +66,14 @@ def ftp_transfer():
 
     # Configurar la barra de progreso
     with ftplib.FTP() as ftp:
-        ftp.connect(FTP_PINNACLE_TOMO)
-        ftp.login(FTP_USERNAME_TOMO, FTP_PASSWORD_TOMO)
-        ftp.cwd(DIR_TOMOS_MARCADAS)
+        try:
+            ftp.connect(FTP_PINNACLE_TOMO)
+            ftp.login(FTP_USERNAME_TOMO, FTP_PASSWORD_TOMO)
+            ftp.cwd(DIR_TOMOS_MARCADAS)
+        except ftplib.all_errors as e:
+            # Mostrar mensaje de error
+            messagebox.showerror("Error TOMO", "Error al conectar con Pinnacle del TOMO")
+            return
         filenames = ftp.nlst()
         img_files = [filename for filename in filenames if filename.endswith('.img')]
         progress['maximum'] = len(img_files)
@@ -137,7 +142,7 @@ def ftp_upload(server_ip, username, password, remote_dir):
                 ftp.login(username, password)
                 ftp.cwd(remote_dir)
             except ftplib.all_errors as e:
-                messagebox.showerror("Error de Conexión", f"No se pudo conectar a PC de Fisica: {e}")
+                messagebox.showerror("Error FISICA", "No se pudo conectar a FISICA")
                 root.destroy()  # Cerrar la ventana de progreso
                 return
 
@@ -171,7 +176,7 @@ def ftp_upload(server_ip, username, password, remote_dir):
         root.destroy()
 
     except Exception as e:
-        messagebox.showerror("Error FTP", f"Error al conectar con el servidor FTP: {e}")
+        messagebox.showerror("Error FTP", "Error al conectar con Fisica")
         eliminar_archivos_locales()
 
     messagebox.showinfo("Éxito", "Todos los archivos fueron enviados correctamente.")
